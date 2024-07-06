@@ -173,7 +173,7 @@ function formatDate(dateString) {
 }
 
 // Endpoint to get orders
-app.get('/orderAll', async (req, res) => {
+app.get('/receipt/orderAll', async (req, res) => {
     try {
         // Fetch and combine data
         const newData = await fetchData();
@@ -223,7 +223,7 @@ app.get('/orderAll', async (req, res) => {
     }
 });
 
-app.post('/orderArea', async (req, res) => {
+app.post('/receipt/orderArea', async (req, res) => {
     let { area } = req.body
 
     try {
@@ -284,7 +284,7 @@ app.post('/orderArea', async (req, res) => {
     }
 });
 
-app.post('/orders', async (req, res) => {
+app.post('/receipt/orders', async (req, res) => {
     const { area } = req.body
 
     try {
@@ -336,7 +336,7 @@ app.post('/orders', async (req, res) => {
     }
 });
 
-app.post('/orderDetail', async (req, res) => {
+app.post('/receipt/orderDetail', async (req, res) => {
     let { order } = req.body
 
     try {
