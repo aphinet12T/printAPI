@@ -27,7 +27,7 @@ async function fetchData() {
     try {
         const response = await axios.get('https://www.fplusstore.com/BCWEB_SERVICES/JSON_VAN_sendOrder.aspx', {
             params: {
-                DATE_FROM: currentDate,
+                DATE_FROM: '20240701',
                 DATE_TO: currentDate
             },
             timeout: 10000
