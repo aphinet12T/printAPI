@@ -49,8 +49,8 @@ async function fetchItemNames(itemCodes) {
           timeout: 10000
         });
         const item = response.data[0]; 
-        const itemDescription = item && item.itemdescripton ? item.itemdescripton.trim() : 'Unknown Item';
-        itemNames[itemCode] = itemDescription;
+        const itemDescription = item && item.itemdescripton ? item.itemdescripton : 'Unknown Item';
+        itemNames[itemCode] = itemDescription.padEnd(35, ' ');
       } catch (error) {
         console.error(`Error fetching item name for ${itemCode}:`, error.message);
         itemNames[itemCode] = 'Unknown Item';
