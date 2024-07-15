@@ -152,7 +152,7 @@ function trimCustomerData(customer) {
         status: customer.status ? customer.status.trim() : '',
         customertype: customer.customertype ? customer.customertype.trim() : '',
         customercode: customer.customercode ? customer.customercode.trim() : '',
-        customername: customer.customername ? customer.customername.trim() : '',
+        customername: customer.customername+customer.customername2 ? customer.customername.trim()+customer.customername2.trim() : '',
         addressid: customer.addressid ? customer.addressid.trim() : '',
         address1: customer.address1 ? customer.address1.trim() : '',
         address2: customer.address2 ? customer.address2.trim() : '',
