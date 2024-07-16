@@ -42,101 +42,104 @@ async function fetchData() {
 async function fetchItemNames(itemCodes) {
     const itemNames = {};
     await Promise.all(itemCodes.map(async (itemCode) => {
-      try {
-        const response = await axios.post('http://192.168.2.97:8383/M3API/ItemManage/Item/getItem', {
-          itemcode: itemCode
-        },{
-          timeout: 10000
-        });
-        const item = response.data[0]; 
-        const itemDescription = item && item.itemdescripton ? item.itemdescripton : 'Unknown Item';
-        itemNames[itemCode] = itemDescription;
-      } catch (error) {
-        console.error(`Error fetching item name for ${itemCode}:`, error.message);
-        itemNames[itemCode] = 'Unknown Item';
-      }
+        try {
+            const response = await axios.post('http://192.168.2.97:8383/M3API/ItemManage/Item/getItem', {
+                itemcode: itemCode
+            }, {
+                timeout: 10000
+            });
+            const item = response.data[0];
+            const itemDescription = item && item.itemdescripton ? item.itemdescripton : 'Unknown Item';
+            itemNames[itemCode] = itemDescription;
+        } catch (error) {
+            console.error(`Error fetching item name for ${itemCode}:`, error.message);
+            itemNames[itemCode] = 'Unknown Item';
+        }
     }));
     return itemNames;
-  }
+}
 
 async function combineData(newData) {
-    let existingData = []
+    let existingData = [];
     if (await fs.pathExists(dataFilePath)) {
-        try {
-            existingData = await fs.readJson(dataFilePath)
-        } catch (error) {
-            console.error('Error reading existing data:', error.message)
-        }
+      try {
+        existingData = await fs.readJson(dataFilePath);
+      } catch (error) {
+        console.error('Error reading existing data:', error.message);
+      }
     }
-
-    const itemCodes = [...new Set(newData.map(order => order.OBITNO))]
-    const itemNames = await fetchItemNames(itemCodes)
-
+  
+    const itemCodes = [...new Set(newData.map(order => order.OBITNO))];
+    const itemNames = await fetchItemNames(itemCodes);
+  
     newData.forEach(order => {
-        const existingOrder = existingData.find(
-            existingOrder => existingOrder.CUOR === order.CUOR
-        )
-        const itemamount = parseFloat(order.OBSAPR) * parseFloat(order.OBORQA)
-        if (existingOrder) {
-            if (!existingOrder.items) {
-                existingOrder.items = []
-            }
-
-            const itemExists = existingOrder.items.find(item =>
-                item.OBPONR === order.OBPONR && item.OBITNO === order.OBITNO
-            )
-            if (!itemExists) {
-                existingOrder.items.push({
-                    OBALUN: order.OBALUN,
-                    OBDIA2: order.OBDIA2,
-                    OBITNO: order.OBITNO,
-                    OBORQA: order.OBORQA,
-                    OBPIDE: order.OBPIDE,
-                    OBPONR: order.OBPONR,
-                    OBSAPR: order.OBSAPR,
-                    OBSPUN: order.OBSPUN,
-                    itemamount: itemamount,
-                    itemname: itemNames[order.OBITNO]
-                })
-            }
-        } else {
-            existingData.push({
-                CUNO: order.CUNO,
-                CUOR: order.CUOR,
-                FACT: order.FACT,
-                OAODAM: order.OAODAM,
-                OAORDT: order.OAORDT,
-                OAORTP: order.OAORTP,
-                RLDT: order.RLDT,
-                WHLO: order.WHLO,
-                OBSMCD: order.OBSMCD,
-                items: [{
-                    OBALUN: order.OBALUN,
-                    OBDIA2: order.OBDIA2,
-                    OBITNO: order.OBITNO,
-                    OBORQA: order.OBORQA,
-                    OBPIDE: order.OBPIDE,
-                    OBPONR: order.OBPONR,
-                    OBSAPR: order.OBSAPR,
-                    OBSPUN: order.OBSPUN,
-                    itemamount: itemamount,
-                    itemname: itemNames[order.OBITNO]
-                }]
-            })
+      const existingOrder = existingData.find(
+        existingOrder => existingOrder.CUOR === order.CUOR
+      );
+      const itemamount = (parseFloat(order.OBSAPR) - parseFloat(order.OBDIA2) ) * parseFloat(order.OBORQA);
+      const disamount = parseFloat((parseFloat(order.OBDIA2) * parseFloat(order.OBORQA)).toFixed(2));
+      if (existingOrder) {
+        if (!existingOrder.items) {
+          existingOrder.items = [];
         }
-    })
-
+  
+        const itemExists = existingOrder.items.find(item =>
+          item.OBPONR === order.OBPONR && item.OBITNO === order.OBITNO
+        );
+        if (!itemExists) {
+          existingOrder.items.push({
+            OBALUN: order.OBALUN,
+            OBDIA2: order.OBDIA2,
+            OBITNO: order.OBITNO,
+            OBORQA: order.OBORQA,
+            OBPIDE: order.OBPIDE,
+            OBPONR: order.OBPONR,
+            OBSAPR: order.OBSAPR,
+            OBSPUN: order.OBSPUN,
+            itemamount: itemamount,
+            disamount: disamount,
+            itemname: itemNames[order.OBITNO]
+          });
+        }
+      } else {
+        existingData.push({
+          CUNO: order.CUNO,
+          CUOR: order.CUOR,
+          FACT: order.FACT,
+          OAODAM: order.OAODAM,
+          OAORDT: order.OAORDT,
+          OAORTP: order.OAORTP,
+          RLDT: order.RLDT,
+          WHLO: order.WHLO,
+          OBSMCD: order.OBSMCD,
+          items: [{
+            OBALUN: order.OBALUN,
+            OBDIA2: order.OBDIA2,
+            OBITNO: order.OBITNO,
+            OBORQA: order.OBORQA,
+            OBPIDE: order.OBPIDE,
+            OBPONR: order.OBPONR,
+            OBSAPR: order.OBSAPR,
+            OBSPUN: order.OBSPUN,
+            itemamount: itemamount,
+            disamount: disamount,
+            itemname: itemNames[order.OBITNO]
+          }]
+        });
+      }
+    });
+  
     existingData.forEach(order => {
-        order.items.sort((a, b) => a.OBPIDE.localeCompare(b.OBPIDE))
-        order.items.forEach((item, index) => { item.itemNo = index + 1; });
-        order.total = parseFloat(order.items.reduce((sum, item) => sum + item.itemamount, 0).toFixed(2))
-        order.ex_vat = Math.ceil((order.total / 1.07) * 100) / 100
-        order.vat = parseFloat((order.total - order.ex_vat).toFixed(2))
-
-    })
-
-    return existingData
-}
+      order.items.sort((a, b) => a.OBPIDE.localeCompare(b.OBPIDE));
+      order.items.forEach((item, index) => { item.itemNo = index + 1; });
+      order.total = parseFloat(order.items.reduce((sum, item) => sum + item.itemamount, 0).toFixed(2));
+      order.totaldis = parseFloat(order.items.reduce((sum, item) => sum + item.disamount, 0).toFixed(2));
+      order.ex_vat = Math.ceil((order.total / 1.07) * 100) / 100;
+      order.vat = parseFloat((order.total - order.ex_vat).toFixed(2));
+    });
+  
+    return existingData;
+  }
 
 async function saveDataToFile(data) {
     try {
@@ -154,7 +157,7 @@ function trimCustomerData(customer) {
         status: customer.status ? customer.status.trim() : '',
         customertype: customer.customertype ? customer.customertype.trim() : '',
         customercode: customer.customercode ? customer.customercode.trim() : '',
-        customername: customer.customername+customer.customername2 ? customer.customername.trim()+customer.customername2.trim() : '',
+        customername: customer.customername + customer.customername2 ? customer.customername.trim() + customer.customername2.trim() : '',
         addressid: customer.addressid ? customer.addressid.trim() : '',
         address1: customer.address1 ? customer.address1.trim() : '',
         address2: customer.address2 ? customer.address2.trim() : '',
@@ -360,6 +363,7 @@ app.post('/receipt/orderDetail', async (req, res) => {
                 WHLO: order.WHLO,
                 OBSMCD: order.OBSMCD,
                 total: order.total,
+                totaldis: order.totaldis,
                 ex_vat: order.ex_vat,
                 vat: order.vat,
                 customer: trimCustomerData(customer),
