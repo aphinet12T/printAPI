@@ -50,7 +50,7 @@ async function fetchItemNames(itemCodes) {
         });
         const item = response.data[0]; 
         const itemDescription = item && item.itemdescripton ? item.itemdescripton : 'Unknown Item';
-        itemNames[itemCode] = itemDescription.padEnd(35, ' ');
+        itemNames[itemCode] = itemDescription;
       } catch (error) {
         console.error(`Error fetching item name for ${itemCode}:`, error.message);
         itemNames[itemCode] = 'Unknown Item';
@@ -127,6 +127,8 @@ async function combineData(newData) {
     })
 
     existingData.forEach(order => {
+        order.items.sort((a, b) => a.OBPIDE.localeCompare(b.OBPIDE))
+        order.items.forEach((item, index) => { item.itemNo = index + 1; });
         order.total = parseFloat(order.items.reduce((sum, item) => sum + item.itemamount, 0).toFixed(2))
         order.ex_vat = Math.ceil((order.total / 1.07) * 100) / 100
         order.vat = parseFloat((order.total - order.ex_vat).toFixed(2))
