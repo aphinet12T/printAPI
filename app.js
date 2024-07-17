@@ -18,10 +18,6 @@ function getCurrentDate() {
     return `${year}${month}${day}`
 }
 
-function slicePackSize(name) {
-    return name.replace(/ x\d+x\d+| x\d+/g, '');
-}
-
 async function fetchData() {
     const currentDate = getCurrentDate()
     try {
@@ -71,6 +67,15 @@ async function combineData(newData) {
   
     const itemCodes = [...new Set(newData.map(order => order.OBITNO))];
     const itemNames = await fetchItemNames(itemCodes);
+
+    const unitMap = {
+      'BAG': 'ถุง',
+      'BOT': 'ขวด',
+      'CTN': 'หีบ',
+      'PAC': 'แพ๊ค',
+      'PCS': 'ซอง',
+      'CRT': 'กล่อง'
+    };
   
     newData.forEach(order => {
       const existingOrder = existingData.find(
@@ -78,6 +83,14 @@ async function combineData(newData) {
       );
       const itemamount = (parseFloat(order.OBSAPR) - parseFloat(order.OBDIA2) ) * parseFloat(order.OBORQA);
       const disamount = parseFloat((parseFloat(order.OBDIA2) * parseFloat(order.OBORQA)).toFixed(2));
+      
+      let unit = unitMap[order.OBSPUN] || order.OBSPUN;
+      if (order.OBITNO.startsWith('600') && order.OBSPUN === 'PCS') {
+        unit = 'ชิ้น';
+      }
+      
+      const qtytext = `${order.OBORQA} ${unit}`;
+  
       if (existingOrder) {
         if (!existingOrder.items) {
           existingOrder.items = [];
@@ -94,11 +107,13 @@ async function combineData(newData) {
             OBORQA: order.OBORQA,
             OBPIDE: order.OBPIDE,
             OBPONR: order.OBPONR,
-            OBSAPR: parseFloat(order.OBSAPR),
+            OBSAPR: order.OBSAPR,
             OBSPUN: order.OBSPUN,
             itemamount: itemamount,
             disamount: disamount,
-            itemname: itemNames[order.OBITNO]
+            itemname: itemNames[order.OBITNO],
+            unit: unit,
+            qtytext: qtytext
           });
         }
       } else {
@@ -119,11 +134,13 @@ async function combineData(newData) {
             OBORQA: order.OBORQA,
             OBPIDE: order.OBPIDE,
             OBPONR: order.OBPONR,
-            OBSAPR: parseFloat(order.OBSAPR),
+            OBSAPR: order.OBSAPR,
             OBSPUN: order.OBSPUN,
             itemamount: itemamount,
             disamount: disamount,
-            itemname: itemNames[order.OBITNO]
+            itemname: itemNames[order.OBITNO],
+            unit: unit,
+            qtytext: qtytext
           }]
         });
       }
@@ -131,7 +148,9 @@ async function combineData(newData) {
   
     existingData.forEach(order => {
       order.items.sort((a, b) => a.OBPIDE.localeCompare(b.OBPIDE));
+      
       order.items.forEach((item, index) => { item.itemNo = index + 1; });
+  
       order.total = parseFloat(order.items.reduce((sum, item) => sum + item.itemamount, 0).toFixed(2));
       order.totaldis = parseFloat(order.items.reduce((sum, item) => sum + item.disamount, 0).toFixed(2));
       order.ex_vat = Math.ceil((order.total / 1.07) * 100) / 100;
@@ -140,6 +159,8 @@ async function combineData(newData) {
   
     return existingData;
   }
+  
+  
 
 async function saveDataToFile(data) {
     try {
@@ -362,17 +383,17 @@ app.post('/receipt/orderDetail', async (req, res) => {
                 RLDT: order.RLDT,
                 WHLO: order.WHLO,
                 OBSMCD: order.OBSMCD,
-                total: order.total.toLocaleString(),
+                total: order.total.toFixed(2).toLocaleString(),
                 totaltext: order.total,
-                totaldis: order.totaldis.toLocaleString(),
-                ex_vat: order.ex_vat.toLocaleString(),
-                vat: order.vat.toLocaleString(),
+                totaldis: order.totaldis.toFixed(2).toLocaleString(),
+                ex_vat: order.ex_vat.toFixed(2).toLocaleString(),
+                vat: order.vat.toFixed(2).toLocaleString(),
                 customer: trimCustomerData(customer),
                 items: order.items.map(item => ({
                     ...item,
-                    OBSAPR: item.OBSAPR.toLocaleString(),
-                    disamount: item.disamount.toLocaleString(),
-                    itemamount: item.itemamount.toLocaleString()
+                    OBSAPR: parseFloat(item.OBSAPR).toFixed(2).toLocaleString(),
+                    disamount: item.disamount.toFixed(2).toLocaleString(),
+                    itemamount: item.itemamount.toFixed(2).toLocaleString()
                 })),
                 area: customer ? customer.area.trim() : null
             }
