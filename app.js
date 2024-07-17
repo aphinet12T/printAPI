@@ -94,7 +94,7 @@ async function combineData(newData) {
             OBORQA: order.OBORQA,
             OBPIDE: order.OBPIDE,
             OBPONR: order.OBPONR,
-            OBSAPR: order.OBSAPR,
+            OBSAPR: parseFloat(order.OBSAPR),
             OBSPUN: order.OBSPUN,
             itemamount: itemamount,
             disamount: disamount,
@@ -119,7 +119,7 @@ async function combineData(newData) {
             OBORQA: order.OBORQA,
             OBPIDE: order.OBPIDE,
             OBPONR: order.OBPONR,
-            OBSAPR: order.OBSAPR,
+            OBSAPR: parseFloat(order.OBSAPR),
             OBSPUN: order.OBSPUN,
             itemamount: itemamount,
             disamount: disamount,
@@ -362,16 +362,22 @@ app.post('/receipt/orderDetail', async (req, res) => {
                 RLDT: order.RLDT,
                 WHLO: order.WHLO,
                 OBSMCD: order.OBSMCD,
-                total: order.total,
-                totaldis: order.totaldis,
-                ex_vat: order.ex_vat,
-                vat: order.vat,
+                total: order.total.toLocaleString(),
+                totaltext: order.total,
+                totaldis: order.totaldis.toLocaleString(),
+                ex_vat: order.ex_vat.toLocaleString(),
+                vat: order.vat.toLocaleString(),
                 customer: trimCustomerData(customer),
-                items: order.items,
+                items: order.items.map(item => ({
+                    ...item,
+                    OBSAPR: item.OBSAPR.toLocaleString(),
+                    disamount: item.disamount.toLocaleString(),
+                    itemamount: item.itemamount.toLocaleString()
+                })),
                 area: customer ? customer.area.trim() : null
             }
         })
-
+        
         const result = order ? combinedResponse.filter(item => item.CUOR === order) : combinedResponse
 
         combinedResponse = result.sort((a, b) => {
