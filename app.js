@@ -58,109 +58,115 @@ async function fetchItemNames(itemCodes) {
 async function combineData(newData) {
     let existingData = [];
     if (await fs.pathExists(dataFilePath)) {
-      try {
-        existingData = await fs.readJson(dataFilePath);
-      } catch (error) {
-        console.error('Error reading existing data:', error.message);
-      }
+        try {
+            existingData = await fs.readJson(dataFilePath);
+        } catch (error) {
+            console.error('Error reading existing data:', error.message);
+        }
     }
-  
+
     const itemCodes = [...new Set(newData.map(order => order.OBITNO))];
     const itemNames = await fetchItemNames(itemCodes);
 
     const unitMap = {
-      'BAG': 'ถุง',
-      'BOT': 'ขวด',
-      'CTN': 'หีบ',
-      'PAC': 'แพ๊ค',
-      'PCS': 'ซอง',
-      'CRT': 'กล่อง'
+        'BAG': 'ถุง',
+        'BOT': 'ขวด',
+        'CTN': 'หีบ',
+        'PAC': 'แพ๊ค',
+        'PCS': 'ซอง',
+        'CRT': 'กล่อง'
     };
-  
+
     newData.forEach(order => {
-      const existingOrder = existingData.find(
-        existingOrder => existingOrder.CUOR === order.CUOR
-      );
-      const itemamount = (parseFloat(order.OBSAPR) - parseFloat(order.OBDIA2) ) * parseFloat(order.OBORQA);
-      const disamount = parseFloat((parseFloat(order.OBDIA2) * parseFloat(order.OBORQA)).toFixed(2));
-      
-      let unit = unitMap[order.OBSPUN] || order.OBSPUN;
-      if (order.OBITNO.startsWith('600') && order.OBSPUN === 'PCS') {
-        unit = 'ชิ้น';
-      }
-      
-      const qtytext = `${order.OBORQA} ${unit}`;
-  
-      if (existingOrder) {
-        if (!existingOrder.items) {
-          existingOrder.items = [];
-        }
-  
-        const itemExists = existingOrder.items.find(item =>
-          item.OBPONR === order.OBPONR && item.OBITNO === order.OBITNO
+        const existingOrder = existingData.find(
+            existingOrder => existingOrder.CUOR === order.CUOR
         );
-        if (!itemExists) {
-          existingOrder.items.push({
-            OBALUN: order.OBALUN,
-            OBDIA2: order.OBDIA2,
-            OBITNO: order.OBITNO,
-            OBORQA: order.OBORQA,
-            OBPIDE: order.OBPIDE,
-            OBPONR: order.OBPONR,
-            OBSAPR: order.OBSAPR,
-            OBSPUN: order.OBSPUN,
-            itemamount: itemamount,
-            disamount: disamount,
-            itemname: itemNames[order.OBITNO],
-            unit: unit,
-            qtytext: qtytext
-          });
+        const itemamount = (parseFloat(order.OBSAPR) - parseFloat(order.OBDIA2)) * parseFloat(order.OBORQA);
+        const disamount = parseFloat((parseFloat(order.OBDIA2) * parseFloat(order.OBORQA)).toFixed(2));
+
+        let unit = unitMap[order.OBSPUN] || order.OBSPUN;
+        if (order.OBITNO.startsWith('600') && order.OBSPUN === 'PCS') {
+            unit = 'ชิ้น';
         }
-      } else {
-        existingData.push({
-          CUNO: order.CUNO,
-          CUOR: order.CUOR,
-          FACT: order.FACT,
-          OAODAM: order.OAODAM,
-          OAORDT: order.OAORDT,
-          OAORTP: order.OAORTP,
-          RLDT: order.RLDT,
-          WHLO: order.WHLO,
-          OBSMCD: order.OBSMCD,
-          items: [{
-            OBALUN: order.OBALUN,
-            OBDIA2: order.OBDIA2,
-            OBITNO: order.OBITNO,
-            OBORQA: order.OBORQA,
-            OBPIDE: order.OBPIDE,
-            OBPONR: order.OBPONR,
-            OBSAPR: order.OBSAPR,
-            OBSPUN: order.OBSPUN,
-            itemamount: itemamount,
-            disamount: disamount,
-            itemname: itemNames[order.OBITNO],
-            unit: unit,
-            qtytext: qtytext
-          }]
-        });
-      }
+
+        const qtytext = `${order.OBORQA} ${unit}`;
+
+        if (existingOrder) {
+            if (!existingOrder.items) {
+                existingOrder.items = [];
+            }
+
+            const itemExists = existingOrder.items.find(item =>
+                item.OBPONR === order.OBPONR && item.OBITNO === order.OBITNO
+            );
+            if (!itemExists) {
+                existingOrder.items.push({
+                    OBALUN: order.OBALUN,
+                    OBDIA2: order.OBDIA2,
+                    OBITNO: order.OBITNO,
+                    OBORQA: order.OBORQA,
+                    OBPIDE: order.OBPIDE,
+                    OBPONR: order.OBPONR,
+                    OBSAPR: order.OBSAPR,
+                    OBSPUN: order.OBSPUN,
+                    itemamount: itemamount,
+                    disamount: disamount,
+                    itemname: itemNames[order.OBITNO],
+                    unit: unit,
+                    qtytext: qtytext
+                });
+            }
+        } else {
+            existingData.push({
+                CUNO: order.CUNO,
+                CUOR: order.CUOR,
+                FACT: order.FACT,
+                OAODAM: order.OAODAM,
+                OAORDT: order.OAORDT,
+                OAORTP: order.OAORTP,
+                RLDT: order.RLDT,
+                WHLO: order.WHLO,
+                OBSMCD: order.OBSMCD,
+                items: [{
+                    OBALUN: order.OBALUN,
+                    OBDIA2: order.OBDIA2,
+                    OBITNO: order.OBITNO,
+                    OBORQA: order.OBORQA,
+                    OBPIDE: order.OBPIDE,
+                    OBPONR: order.OBPONR,
+                    OBSAPR: order.OBSAPR,
+                    OBSPUN: order.OBSPUN,
+                    itemamount: itemamount,
+                    disamount: disamount,
+                    itemname: itemNames[order.OBITNO],
+                    unit: unit,
+                    qtytext: qtytext
+                }]
+            });
+        }
     });
-  
+
+    const uniqueData = [];
     existingData.forEach(order => {
-      order.items.sort((a, b) => a.OBPIDE.localeCompare(b.OBPIDE));
-      
-      order.items.forEach((item, index) => { item.itemNo = index + 1; });
-  
-      order.total = parseFloat(order.items.reduce((sum, item) => sum + item.itemamount, 0).toFixed(2));
-      order.totaldis = parseFloat(order.items.reduce((sum, item) => sum + item.disamount, 0).toFixed(2));
-      order.ex_vat = Math.ceil((order.total / 1.07) * 100) / 100;
-      order.vat = parseFloat((order.total - order.ex_vat).toFixed(2));
+        if (!uniqueData.find(o => o.CUOR === order.CUOR)) {
+            uniqueData.push(order);
+        }
     });
-  
-    return existingData;
-  }
-  
-  
+
+    uniqueData.forEach(order => {
+        order.items.sort((a, b) => a.OBPIDE.localeCompare(b.OBPIDE));
+
+        order.items.forEach((item, index) => { item.itemNo = index + 1; });
+
+        order.total = parseFloat(order.items.reduce((sum, item) => sum + item.itemamount, 0).toFixed(2));
+        order.totaldis = parseFloat(order.items.reduce((sum, item) => sum + item.disamount, 0).toFixed(2));
+        order.ex_vat = Math.ceil((order.total / 1.07) * 100) / 100;
+        order.vat = parseFloat((order.total - order.ex_vat).toFixed(2));
+    });
+
+    return uniqueData;
+}
+
 
 async function saveDataToFile(data) {
     try {
@@ -308,7 +314,6 @@ app.post('/receipt/orderArea', async (req, res) => {
 
 app.post('/receipt/orders', async (req, res) => {
     const { area } = req.body
-
     try {
         const newData = await fetchData()
         const combinedData = await combineData(newData)
@@ -326,15 +331,23 @@ app.post('/receipt/orders', async (req, res) => {
 
         const customers = response2.data
 
+        const whloToAreaMap = {
+            "217": "BE811",
+            "218": "BE812",
+            "216": "BE813",
+            "215": "BE814"
+        }
+
         let combinedResponse = filteredOrders.map(order => {
-            const customer = customers.find(cust => cust.customercode === order.CUNO)
+            const customer = customers.find(cust => cust.customercode.trim() === order.CUNO)
+            const mappedArea = whloToAreaMap[order.WHLO.trim()] || ''
             return {
                 OAORDT: formatDate(order.OAORDT),
                 CUNO: order.CUNO,
                 customername: customer ? customer.customername : '',
                 CUOR: order.CUOR,
                 total: order.total,
-                area: customer ? customer.area.trim() : ''
+                area: mappedArea
             }
         })
 
@@ -355,10 +368,14 @@ app.post('/receipt/orderDetail', async (req, res) => {
     let { order } = req.body
 
     try {
-        const newData = await fetchData()
-        const combinedData = await combineData(newData)
-
-        await saveDataToFile(combinedData)
+        let combinedData = []
+        if (await fs.pathExists(dataFilePath)) {
+            try {
+                combinedData = await fs.readJson(dataFilePath)
+            } catch (error) {
+                console.error('Error reading data from file:', error.message)
+            }
+        }
 
         const validWHLO = ["215", "216", "217", "218"]
         const filteredOrders = combinedData.filter(order => validWHLO.includes(order.WHLO.trim()))
@@ -372,7 +389,7 @@ app.post('/receipt/orderDetail', async (req, res) => {
         const customers = response2.data
 
         let combinedResponse = filteredOrders.map(order => {
-            const customer = customers.find(cust => cust.customercode === order.CUNO)
+            const customer = customers.find(cust => cust.customercode.trim() === order.CUNO)
             return {
                 CUNO: order.CUNO,
                 CUOR: order.CUOR,
@@ -398,7 +415,7 @@ app.post('/receipt/orderDetail', async (req, res) => {
                 area: customer ? customer.area.trim() : null
             }
         })
-        
+
         const result = order ? combinedResponse.filter(item => item.CUOR === order) : combinedResponse
 
         combinedResponse = result.sort((a, b) => {
@@ -411,5 +428,6 @@ app.post('/receipt/orderDetail', async (req, res) => {
         res.status(500).json({ message: 'Internal Server Error' })
     }
 })
+
 
 module.exports = app
