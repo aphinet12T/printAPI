@@ -240,7 +240,8 @@ app.post('/receipt/orderDetail', async (req, res) => {
     let { order } = req.body;
 
     try {
-        const combinedData = await Receipt.find({ CUOR: order });
+        // ค้นหา order โดยใช้ CUOR จากฐานข้อมูล
+        const combinedData = await Receipt.find({ CUOR: order }).lean();
 
         const validWHLO = ["215", "216", "217", "218"];
         const filteredOrders = combinedData.filter(order => validWHLO.includes(order.WHLO.trim()));
@@ -293,5 +294,6 @@ app.post('/receipt/orderDetail', async (req, res) => {
         res.status(500).json({ message: 'Internal Server Error' });
     }
 });
+
 
 module.exports = app;
