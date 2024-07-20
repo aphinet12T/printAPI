@@ -1,25 +1,37 @@
-const express = require('express')
-const axios = require('axios')
-const fs = require('fs-extra')
-const path = require('path')
-const cors = require('cors')
+const express = require('express');
+const mongoose = require('mongoose');
+const axios = require('axios');
+const fs = require('fs-extra');
+const path = require('path');
+const cors = require('cors');
+const Receipt = require('./models/receipt.js')
 
-const app = express()
-const dataFilePath = path.join(__dirname, 'orders.json')
+const app = express();
 
-app.use(express.json())
-app.use(cors())
+app.use(express.json());
+app.use(cors());
+
+mongoose.connect('mongodb://dev12t:12Trading%40!@192.168.44.58:27017/printreceipt')
+    .then(() => console.log('MongoDB connected'))
+    .catch(err => console.log(err));
 
 function getCurrentDate() {
-    const date = new Date()
-    const year = date.getFullYear()
-    const month = (date.getMonth() + 1).toString().padStart(2, '0')
-    const day = date.getDate().toString().padStart(2, '0')
-    return `${year}${month}${day}`
+    const date = new Date();
+    const year = date.getFullYear();
+    const month = (date.getMonth() + 1).toString().padStart(2, '0');
+    const day = date.getDate().toString().padStart(2, '0');
+    return `${year}${month}${day}`;
+}
+
+async function fetchExistingCUORs(currentDate) {
+    const receipts = await Receipt.find({ OAORDT: currentDate }).select('CUOR -_id');
+    return receipts.map(receipt => receipt.CUOR);
 }
 
 async function fetchData() {
-    const currentDate = getCurrentDate()
+    const currentDate = getCurrentDate();
+    const existingCUORs = await fetchExistingCUORs(currentDate);
+
     try {
         const response = await axios.get('https://www.fplusstore.com/BCWEB_SERVICES/JSON_VAN_sendOrder.aspx', {
             params: {
@@ -27,11 +39,13 @@ async function fetchData() {
                 DATE_TO: currentDate
             },
             timeout: 10000
-        })
-        return response.data
+        });
+
+        const newData = response.data.filter(order => !existingCUORs.includes(order.CUOR));
+        return newData;
     } catch (error) {
-        console.error('Error fetching data from API:', error.message)
-        return []
+        console.error('Error fetching data from API:', error.message);
+        return [];
     }
 }
 
@@ -55,16 +69,8 @@ async function fetchItemNames(itemCodes) {
     return itemNames;
 }
 
-async function combineData(newData) {
-    let existingData = [];
-    if (await fs.pathExists(dataFilePath)) {
-        try {
-            existingData = await fs.readJson(dataFilePath);
-        } catch (error) {
-            console.error('Error reading existing data:', error.message);
-        }
-    }
-
+async function combineData() {
+    const newData = await fetchData();
     const itemCodes = [...new Set(newData.map(order => order.OBITNO))];
     const itemNames = await fetchItemNames(itemCodes);
 
@@ -77,10 +83,8 @@ async function combineData(newData) {
         'CRT': 'กล่อง'
     };
 
-    newData.forEach(order => {
-        const existingOrder = existingData.find(
-            existingOrder => existingOrder.CUOR === order.CUOR
-        );
+    for (const order of newData) {
+        const existingOrder = await Receipt.findOne({ CUOR: order.CUOR });
         const itemamount = (parseFloat(order.OBSAPR) - parseFloat(order.OBDIA2)) * parseFloat(order.OBORQA);
         const disamount = parseFloat((parseFloat(order.OBDIA2) * parseFloat(order.OBORQA)).toFixed(2));
 
@@ -90,34 +94,37 @@ async function combineData(newData) {
         }
 
         const qtytext = `${order.OBORQA} ${unit}`;
+        const item = {
+            OBALUN: order.OBALUN,
+            OBDIA2: order.OBDIA2,
+            OBITNO: order.OBITNO,
+            OBORQA: order.OBORQA,
+            OBPIDE: order.OBPIDE,
+            OBPONR: order.OBPONR,
+            OBSAPR: order.OBSAPR,
+            OBSPUN: order.OBSPUN,
+            itemamount: itemamount,
+            disamount: disamount,
+            itemname: itemNames[order.OBITNO],
+            unit: unit,
+            qtytext: qtytext
+        };
 
         if (existingOrder) {
-            if (!existingOrder.items) {
-                existingOrder.items = [];
-            }
-
-            const itemExists = existingOrder.items.find(item =>
-                item.OBPONR === order.OBPONR && item.OBITNO === order.OBITNO
+            const itemExists = existingOrder.items.find(existingItem =>
+                existingItem.OBPONR === item.OBPONR && existingItem.OBITNO === item.OBITNO
             );
+
             if (!itemExists) {
-                existingOrder.items.push({
-                    OBALUN: order.OBALUN,
-                    OBDIA2: order.OBDIA2,
-                    OBITNO: order.OBITNO,
-                    OBORQA: order.OBORQA,
-                    OBPIDE: order.OBPIDE,
-                    OBPONR: order.OBPONR,
-                    OBSAPR: order.OBSAPR,
-                    OBSPUN: order.OBSPUN,
-                    itemamount: itemamount,
-                    disamount: disamount,
-                    itemname: itemNames[order.OBITNO],
-                    unit: unit,
-                    qtytext: qtytext
-                });
+                existingOrder.items.push(item);
             }
+            existingOrder.total = parseFloat(existingOrder.items.reduce((sum, item) => sum + item.itemamount, 0).toFixed(2));
+            existingOrder.totaldis = parseFloat(existingOrder.items.reduce((sum, item) => sum + item.disamount, 0).toFixed(2));
+            existingOrder.ex_vat = Math.ceil((existingOrder.total / 1.07) * 100) / 100;
+            existingOrder.vat = parseFloat((existingOrder.total - existingOrder.ex_vat).toFixed(2));
+            await existingOrder.save();
         } else {
-            existingData.push({
+            const newReceipt = new Receipt({
                 CUNO: order.CUNO,
                 CUOR: order.CUOR,
                 FACT: order.FACT,
@@ -127,58 +134,19 @@ async function combineData(newData) {
                 RLDT: order.RLDT,
                 WHLO: order.WHLO,
                 OBSMCD: order.OBSMCD,
-                items: [{
-                    OBALUN: order.OBALUN,
-                    OBDIA2: order.OBDIA2,
-                    OBITNO: order.OBITNO,
-                    OBORQA: order.OBORQA,
-                    OBPIDE: order.OBPIDE,
-                    OBPONR: order.OBPONR,
-                    OBSAPR: order.OBSAPR,
-                    OBSPUN: order.OBSPUN,
-                    itemamount: itemamount,
-                    disamount: disamount,
-                    itemname: itemNames[order.OBITNO],
-                    unit: unit,
-                    qtytext: qtytext
-                }]
+                items: [item]
             });
+            newReceipt.total = item.itemamount;
+            newReceipt.totaldis = item.disamount;
+            newReceipt.ex_vat = Math.ceil((newReceipt.total / 1.07) * 100) / 100;
+            newReceipt.vat = parseFloat((newReceipt.total - newReceipt.ex_vat).toFixed(2));
+            await newReceipt.save();
         }
-    });
-
-    const uniqueData = [];
-    existingData.forEach(order => {
-        if (!uniqueData.find(o => o.CUOR === order.CUOR)) {
-            uniqueData.push(order);
-        }
-    });
-
-    uniqueData.forEach(order => {
-        order.items.sort((a, b) => a.OBPIDE.localeCompare(b.OBPIDE));
-
-        order.items.forEach((item, index) => { item.itemNo = index + 1; });
-
-        order.total = parseFloat(order.items.reduce((sum, item) => sum + item.itemamount, 0).toFixed(2));
-        order.totaldis = parseFloat(order.items.reduce((sum, item) => sum + item.disamount, 0).toFixed(2));
-        order.ex_vat = Math.ceil((order.total / 1.07) * 100) / 100;
-        order.vat = parseFloat((order.total - order.ex_vat).toFixed(2));
-    });
-
-    return uniqueData;
-}
-
-
-async function saveDataToFile(data) {
-    try {
-        await fs.writeJson(dataFilePath, data, { spaces: 2 })
-        console.log('Data saved to orders.json')
-    } catch (error) {
-        console.error('Error saving data to file:', error.message)
     }
 }
 
 function trimCustomerData(customer) {
-    if (!customer) return {}
+    if (!customer) return {};
     return {
         companycode: customer.companycode,
         status: customer.status ? customer.status.trim() : '',
@@ -200,196 +168,93 @@ function trimCustomerData(customer) {
         duocode: customer.duocode ? customer.duocode.trim() : '',
         route: customer.route ? customer.route.trim() : '',
         payer: customer.payer ? customer.payer.trim() : '',
-        taxno: customer.taxno ? customer.taxno.trim() : '',
-    }
+        taxno: customer.taxno ? customer.taxno.trim() : ''
+    };
 }
 
 function formatDate(dateString) {
-    if (!dateString) return ''
-    const year = dateString.substring(0, 4)
-    const month = dateString.substring(4, 6)
-    const day = dateString.substring(6, 8)
-    return `${day}/${month}/${year}`
+    if (!dateString) return '';
+    const year = dateString.substring(0, 4);
+    const month = dateString.substring(4, 6);
+    const day = dateString.substring(6, 8);
+    return `${day}/${month}/${year}`;
 }
 
-app.get('/receipt/orderAll', async (req, res) => {
-    try {
-
-        const newData = await fetchData()
-        const combinedData = await combineData(newData)
-
-        await saveDataToFile(combinedData)
-
-        const validWHLO = ["215", "216", "217", "218"]
-        const filteredOrders = combinedData.filter(order => validWHLO.includes(order.WHLO.trim()))
-
-        const response2 = await axios.post('http://192.168.2.97:8383/M3API/OrderManage/order/getCustomer', {
-            customertype: '103'
-        }, {
-            timeout: 10000
-        })
-
-        const customers = response2.data
-
-        const combinedResponse = filteredOrders.map(order => {
-            const customer = customers.find(cust => cust.customercode === order.CUNO)
-            return {
-                CUNO: order.CUNO,
-                CUOR: order.CUOR,
-                FACT: order.FACT,
-                OAODAM: order.OAODAM,
-                OAORDT: order.OAORDT,
-                OAORTP: order.OAORTP,
-                RLDT: order.RLDT,
-                WHLO: order.WHLO,
-                OBSMCD: order.OBSMCD,
-                total: order.total,
-                vat: order.vat,
-                ex_vat: order.ex_vat,
-                customer: trimCustomerData(customer),
-                items: order.items
-            }
-        })
-
-        res.json(combinedResponse)
-    } catch (error) {
-        console.error('Error processing orders:', error.message)
-        res.status(500).json({ message: 'Internal Server Error' })
-    }
-})
-
-app.post('/receipt/orderArea', async (req, res) => {
-    let { area } = req.body
-
-    try {
-        const newData = await fetchData()
-        const combinedData = await combineData(newData)
-
-        await saveDataToFile(combinedData)
-
-        const validWHLO = ["215", "216", "217", "218"]
-        const filteredOrders = combinedData.filter(order => validWHLO.includes(order.WHLO.trim()))
-
-        const response2 = await axios.post('http://192.168.2.97:8383/M3API/OrderManage/order/getCustomer', {
-            customertype: '103'
-        }, {
-            timeout: 10000
-        })
-
-        const customers = response2.data
-
-        let combinedResponse = filteredOrders.map(order => {
-            const customer = customers.find(cust => cust.customercode === order.CUNO)
-            return {
-                CUNO: order.CUNO,
-                CUOR: order.CUOR,
-                FACT: order.FACT,
-                OAODAM: order.OAODAM,
-                OAORDT: formatDate(order.OAORDT),
-                OAORTP: order.OAORTP,
-                RLDT: order.RLDT,
-                WHLO: order.WHLO,
-                OBSMCD: order.OBSMCD,
-                total: order.total,
-                ex_vat: order.ex_vat,
-                vat: order.vat,
-                customer: trimCustomerData(customer),
-                items: order.items,
-                area: customer ? customer.area.trim() : null
-            }
-        })
-
-        const result = area ? combinedResponse.filter(order => order.area === area) : combinedResponse
-
-        combinedResponse = result.sort((a, b) => {
-            return b.CUOR.localeCompare(a.CUOR)
-        })
-
-        res.json(combinedResponse)
-    } catch (error) {
-        console.error('Error processing orders:', error.message)
-        res.status(500).json({ message: 'Internal Server Error' })
-    }
-})
-
 app.post('/receipt/orders', async (req, res) => {
-    const { area } = req.body
+    const { warehouse } = req.body;
     try {
-        const newData = await fetchData()
-        const combinedData = await combineData(newData)
-
-        await saveDataToFile(combinedData)
-
-        const validWHLO = ["215", "216", "217", "218"]
-        const filteredOrders = combinedData.filter(order => validWHLO.includes(order.WHLO.trim()))
+        await combineData();
+        const response = await Receipt.find({ WHLO: warehouse });
 
         const response2 = await axios.post('http://192.168.2.97:8383/M3API/OrderManage/order/getCustomer', {
             customertype: '103'
         }, {
             timeout: 10000
-        })
-
-        const customers = response2.data
+        });
+        const customers = response2.data;
 
         const whloToAreaMap = {
             "217": "BE811",
             "218": "BE812",
             "216": "BE813",
             "215": "BE814"
-        }
+        };
 
-        let combinedResponse = filteredOrders.map(order => {
-            const customer = customers.find(cust => cust.customercode.trim() === order.CUNO)
-            const mappedArea = whloToAreaMap[order.WHLO.trim()] || ''
+        let combinedResponse = response.map(order => {
+            const customer = customers.find(cust => cust.customercode.trim() === order.CUNO.trim());
+            const mappedArea = whloToAreaMap[order.WHLO.trim()] || '';
+
+            console.log('Order WHLO:', order.WHLO.trim());
+            console.log('Mapped Area:', mappedArea);
+            console.log('Customer found:', customer);
+
             return {
                 OAORDT: formatDate(order.OAORDT),
                 CUNO: order.CUNO,
                 customername: customer ? customer.customername : '',
                 CUOR: order.CUOR,
                 total: order.total,
+                warehouse: order.WHLO,
                 area: mappedArea
-            }
-        })
+            };
+        });
 
-        const result = area ? combinedResponse.filter(order => order.area === area.trim()) : combinedResponse
+        console.log('Combined Response:', combinedResponse);
+
+        const result = warehouse ? combinedResponse.filter(order => order.warehouse === warehouse.trim()) : combinedResponse;
+
+        console.log('Filtered Result:', result);
 
         combinedResponse = result.sort((a, b) => {
-            return b.CUOR.localeCompare(a.CUOR)
-        })
+            return b.CUOR.localeCompare(a.CUOR);
+        });
 
-        res.json(combinedResponse)
+        res.json(combinedResponse);
     } catch (error) {
-        console.error('Error processing orders:', error.message)
-        res.status(500).json({ message: 'Internal Server Error' })
+        console.error('Error processing orders:', error.message);
+        res.status(500).json({ message: 'Internal Server Error' });
     }
-})
+});
 
 app.post('/receipt/orderDetail', async (req, res) => {
-    let { order } = req.body
+    let { order } = req.body;
 
     try {
-        let combinedData = []
-        if (await fs.pathExists(dataFilePath)) {
-            try {
-                combinedData = await fs.readJson(dataFilePath)
-            } catch (error) {
-                console.error('Error reading data from file:', error.message)
-            }
-        }
+        const combinedData = await Receipt.find({ CUOR: order });
 
-        const validWHLO = ["215", "216", "217", "218"]
-        const filteredOrders = combinedData.filter(order => validWHLO.includes(order.WHLO.trim()))
+        const validWHLO = ["215", "216", "217", "218"];
+        const filteredOrders = combinedData.filter(order => validWHLO.includes(order.WHLO.trim()));
 
         const response2 = await axios.post('http://192.168.2.97:8383/M3API/OrderManage/order/getCustomer', {
             customertype: '103'
         }, {
             timeout: 10000
-        })
+        });
 
-        const customers = response2.data
+        const customers = response2.data;
 
         let combinedResponse = filteredOrders.map(order => {
-            const customer = customers.find(cust => cust.customercode.trim() === order.CUNO)
+            const customer = customers.find(cust => cust.customercode.trim() === order.CUNO);
             return {
                 CUNO: order.CUNO,
                 CUOR: order.CUOR,
@@ -413,21 +278,20 @@ app.post('/receipt/orderDetail', async (req, res) => {
                     itemamount: item.itemamount.toFixed(2).toLocaleString()
                 })),
                 area: customer ? customer.area.trim() : null
-            }
-        })
+            };
+        });
 
-        const result = order ? combinedResponse.filter(item => item.CUOR === order) : combinedResponse
+        const result = order ? combinedResponse.filter(item => item.CUOR === order) : combinedResponse;
 
         combinedResponse = result.sort((a, b) => {
-            return b.CUOR.localeCompare(a.CUOR)
-        })
+            return b.CUOR.localeCompare(a.CUOR);
+        });
 
-        res.json(combinedResponse)
+        res.json(combinedResponse);
     } catch (error) {
-        console.error('Error processing orders:', error.message)
-        res.status(500).json({ message: 'Internal Server Error' })
+        console.error('Error processing orders:', error.message);
+        res.status(500).json({ message: 'Internal Server Error' });
     }
-})
+});
 
-
-module.exports = app
+module.exports = app;
