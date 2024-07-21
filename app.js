@@ -38,7 +38,7 @@ async function fetchData() {
                 DATE_FROM: currentDate,
                 DATE_TO: currentDate
             },
-            timeout: 10000
+            timeout: 20000
         });
 
         const newData = response.data.filter(order => !existingCUORs.includes(order.CUOR));
@@ -240,7 +240,6 @@ app.post('/receipt/orderDetail', async (req, res) => {
     let { order } = req.body;
 
     try {
-        // ค้นหา order โดยใช้ CUOR จากฐานข้อมูล
         const combinedData = await Receipt.find({ CUOR: order }).lean();
 
         const validWHLO = ["215", "216", "217", "218"];
@@ -256,6 +255,13 @@ app.post('/receipt/orderDetail', async (req, res) => {
 
         let combinedResponse = filteredOrders.map(order => {
             const customer = customers.find(cust => cust.customercode.trim() === order.CUNO);
+
+            const sortedItems = order.items.sort((a, b) => {
+                if (!a.OBPIDE) return -1;
+                if (!b.OBPIDE) return 1;
+                return a.OBPIDE.localeCompare(b.OBPIDE);
+            });
+
             return {
                 CUNO: order.CUNO,
                 CUOR: order.CUOR,
@@ -272,7 +278,7 @@ app.post('/receipt/orderDetail', async (req, res) => {
                 ex_vat: order.ex_vat.toFixed(2).toLocaleString(),
                 vat: order.vat.toFixed(2).toLocaleString(),
                 customer: trimCustomerData(customer),
-                items: order.items.map(item => ({
+                items: sortedItems.map(item => ({
                     ...item,
                     OBSAPR: parseFloat(item.OBSAPR).toFixed(2).toLocaleString(),
                     disamount: item.disamount.toFixed(2).toLocaleString(),
@@ -294,6 +300,5 @@ app.post('/receipt/orderDetail', async (req, res) => {
         res.status(500).json({ message: 'Internal Server Error' });
     }
 });
-
 
 module.exports = app;
