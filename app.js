@@ -1,12 +1,16 @@
 const express = require('express');
 const mongoose = require('mongoose');
 const axios = require('axios');
-const fs = require('fs-extra');
+const multer = require('multer');
+const xlsx = require('xlsx');
 const path = require('path');
 const cors = require('cors');
+const fs = require('fs-extra');
 const Receipt = require('./models/receipt.js')
+const Return = require('./models/return.js')
 
 const app = express();
+const upload = multer({ dest: 'uploads/' });
 
 app.use(express.json());
 app.use(cors());
@@ -297,6 +301,234 @@ app.post('/receipt/orderDetail', async (req, res) => {
         res.json(combinedResponse);
     } catch (error) {
         console.error('Error processing orders:', error.message);
+        res.status(500).json({ message: 'Internal Server Error' });
+    }
+});
+
+app.post('/return/upload', upload.single('file'), async (req, res) => {
+    try {
+        const filePath = path.join(__dirname, req.file.path);
+        const workbook = xlsx.readFile(filePath);
+        const sheetName = workbook.SheetNames[0];
+        const worksheet = workbook.Sheets[sheetName];
+        const data = xlsx.utils.sheet_to_json(worksheet);
+
+        const groupedData = {};
+
+        data.forEach(row => {
+            const key = `${row.CUNO}_${row.OAORDT}`;
+            const item = {
+                CUOR: row.CUOR,
+                OBITNO: row.OBITNO,
+                OBALUN: row.OBALUN,
+                OBORQA: row.OBORQA,
+                OBSAPR: row.OBSAPR,
+                OBSPUN: row.OBSPUN,
+                OBWHSL: row.OBWHSL,
+                OBPONR: row.OBPONR,
+                OBDIA2: row.OBDIA2,
+                OBSMCD: row.OBSMCD,
+                OAORTP: row.OAORTP
+            };
+
+            if (!groupedData[key]) {
+                groupedData[key] = {
+                    CUNO: row.CUNO,
+                    FACI: row.FACI,
+                    WHLO: row.WHLO,
+                    RLDT: row.RLDT,
+                    OAOREF: row.OAOREF,
+                    saleItems: [],
+                    returnItems: [],
+                    OAORDT: row.OAORDT
+                };
+            }
+
+            if (row.OBBANO === 'RETURN') {
+                groupedData[key].returnItems.push(item);
+            } else {
+                groupedData[key].saleItems.push(item);
+            }
+        });
+
+        const returnDocs = Object.values(groupedData);
+
+        await Return.insertMany(returnDocs);
+        await fs.remove(filePath);
+
+        res.status(200).json({ message: 'File uploaded and data imported successfully.' });
+    } catch (error) {
+        console.error('Error processing file:', error);
+        res.status(500).json({ message: 'Internal Server Error' });
+    }
+});
+
+app.post('/receipt/returns', async (req, res) => {
+    const { warehouse } = req.body;
+    try {
+        const returns = await Return.find({ WHLO: warehouse });
+        
+        const response2 = await axios.post('http://192.168.2.97:8383/M3API/OrderManage/order/getCustomer', {
+            customertype: '103'
+        }, {
+            timeout: 10000
+        });
+
+        const customers = response2.data;
+
+        const whloToAreaMap = {
+            "217": "BE811",
+            "218": "BE812",
+            "216": "BE813",
+            "215": "BE814"
+        };
+
+        let combinedResponse = returns.map(order => {
+            const customer = customers.find(cust => cust.customercode.trim() === order.CUNO);
+            const mappedArea = whloToAreaMap[order.WHLO.trim()] || '';
+            return {
+                OAORDT: formatDate(order.OAORDT),
+                CUNO: order.CUNO,
+                customername: customer ? customer.customername : '',
+                warehouse: order.WHLO,
+                area: mappedArea,
+                CUOR: order.saleItems.length > 0 ? order.saleItems[0].CUOR : ''
+            };
+        });
+
+        res.json(combinedResponse);
+    } catch (error) {
+        console.error('Error processing orders:', error.message);
+        res.status(500).json({ message: 'Internal Server Error' });
+    }
+});
+
+app.post('/receipt/returnDetail', async (req, res) => {
+    try {
+        const { CUOR } = req.body;
+
+        const order = await Return.findOne({ 'saleItems.CUOR': CUOR }).lean();
+
+        if (!order) {
+            return res.status(404).json({ message: 'Order not found' });
+        }
+
+        const validWHLO = ["215", "216", "217", "218"];
+        const filteredOrder = validWHLO.includes(order.WHLO.trim()) ? order : null;
+
+        if (!filteredOrder) {
+            return res.status(404).json({ message: 'Order not found in the specified warehouses' });
+        }
+
+        const response = await axios.post('http://192.168.2.97:8383/M3API/OrderManage/order/getCustomer', {
+            customertype: '103'
+        }, {
+            timeout: 10000
+        });
+
+        const customers = response.data;
+        const customer = customers.find(cust => cust.customercode.trim() === order.CUNO);
+
+        const itemCodes = [...new Set([
+            ...order.saleItems.map(item => item.OBITNO),
+            ...order.returnItems.map(item => item.OBITNO)
+        ])];
+        const itemNames = await fetchItemNames(itemCodes);
+
+        const unitMap = {
+            'BAG': 'ถุง',
+            'BOT': 'ขวด',
+            'CTN': 'หีบ',
+            'PAC': 'แพ๊ค',
+            'PCS': 'ซอง',
+            'CRT': 'กล่อง'
+        };
+
+        let saleTotalText = 0;
+        let returnTotalText = 0;
+
+        const combinedResponse = {
+            CUNO: order.CUNO,
+            CUOR: CUOR,
+            FACT: order.FACI,
+            OAODAM: order.OAOREF,
+            OAORDT: formatDate(order.OAORDT),
+            OAORTP: order.OAORTP,
+            RLDT: order.RLDT,
+            WHLO: order.WHLO,
+            OBSMCD: order.OBSMCD,
+            customer: trimCustomerData(customer),
+            saleItems: order.saleItems.map(item => {
+                const unit = unitMap[item.OBSPUN] || item.OBSPUN;
+                const qtytext = `${item.OBORQA} ${unit}`;
+                const total = item.OBSAPR * item.OBORQA;
+                const totaldis = item.OBDIA2 * item.OBORQA;
+                const ex_vat = total / 1.07;
+                const vat = total - ex_vat;
+
+                saleTotalText += total;
+
+                return {
+                    ...item,
+                    itemname: itemNames[item.OBITNO],
+                    OBSAPR: item.OBSAPR.toFixed(2),
+                    disamount: totaldis.toFixed(2),
+                    itemamount: total.toFixed(2),
+                    total: total.toFixed(2),
+                    totaltext: parseFloat(total.toFixed(2)),
+                    totaldis: totaldis.toFixed(2),
+                    ex_vat: ex_vat.toFixed(2),
+                    vat: vat.toFixed(2),
+                    unit: unit,
+                    qtytext: qtytext
+                };
+            }),
+            returnItems: order.returnItems.map(item => {
+                const unit = unitMap[item.OBSPUN] || item.OBSPUN;
+                const qtytext = `${item.OBORQA} ${unit}`;
+                const total = item.OBSAPR * item.OBORQA;
+                const totaldis = item.OBDIA2 * item.OBORQA;
+                const ex_vat = total / 1.07;
+                const vat = total - ex_vat;
+
+                returnTotalText += total;
+
+                return {
+                    ...item,
+                    itemname: itemNames[item.OBITNO],
+                    OBSAPR: item.OBSAPR.toFixed(2),
+                    disamount: totaldis.toFixed(2),
+                    itemamount: total.toFixed(2),
+                    total: total.toFixed(2),
+                    totaltext: parseFloat(total.toFixed(2)),
+                    totaldis: totaldis.toFixed(2),
+                    ex_vat: ex_vat.toFixed(2),
+                    vat: vat.toFixed(2),
+                    unit: unit,
+                    qtytext: qtytext
+                };
+            }),
+            area: customer ? customer.area.trim() : null
+        };
+
+        combinedResponse.saletotal = saleTotalText.toFixed(2);
+        combinedResponse.saletotaltext = parseFloat(saleTotalText.toFixed(2));
+        combinedResponse.saletotaldis = "0.00";
+        combinedResponse.saleex_vat = (saleTotalText / 1.07).toFixed(2);
+        combinedResponse.salevat = (saleTotalText - (saleTotalText / 1.07)).toFixed(2);
+
+        combinedResponse.returntotal = returnTotalText.toFixed(2);
+        combinedResponse.returntotaltext = parseFloat(returnTotalText.toFixed(2));
+        combinedResponse.returntotaldis = "0.00";
+        combinedResponse.returnex_vat = (returnTotalText / 1.07).toFixed(2);
+        combinedResponse.returnvat = (returnTotalText - (returnTotalText / 1.07)).toFixed(2);
+
+        combinedResponse.change = (saleTotalText + returnTotalText).toFixed(2);
+        combinedResponse.changeText = parseFloat((saleTotalText + returnTotalText).toFixed(2));
+
+        res.json(combinedResponse);
+    } catch (error) {
+        console.error('Error processing order details:', error.message);
         res.status(500).json({ message: 'Internal Server Error' });
     }
 });
