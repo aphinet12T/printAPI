@@ -460,7 +460,7 @@ app.post('/receipt/returnDetail', async (req, res) => {
             customer: trimCustomerData(customer),
             saleItems: order.saleItems.map(item => {
                 const unit = unitMap[item.OBSPUN] || item.OBSPUN;
-                const qtytext = `${item.OBORQA} ${unit}`;
+                const qtytext = `${Math.abs(item.OBORQA)} ${unit}`;
                 const total = item.OBSAPR * item.OBORQA;
                 const totaldis = item.OBDIA2 * item.OBORQA;
                 const ex_vat = total / 1.07;
@@ -485,11 +485,11 @@ app.post('/receipt/returnDetail', async (req, res) => {
             }),
             returnItems: order.returnItems.map(item => {
                 const unit = unitMap[item.OBSPUN] || item.OBSPUN;
-                const qtytext = `${item.OBORQA} ${unit}`;
-                const total = item.OBSAPR * item.OBORQA;
-                const totaldis = item.OBDIA2 * item.OBORQA;
-                const ex_vat = total / 1.07;
-                const vat = total - ex_vat;
+                const qtytext = `${Math.abs(item.OBORQA)} ${unit}`;
+                const total = Math.abs(item.OBSAPR * item.OBORQA);
+                const totaldis = Math.abs(item.OBDIA2 * item.OBORQA);
+                const ex_vat = Math.abs(total / 1.07);
+                const vat = Math.abs(total - ex_vat);
 
                 returnTotalText += total;
 
@@ -523,8 +523,8 @@ app.post('/receipt/returnDetail', async (req, res) => {
         combinedResponse.returnex_vat = (returnTotalText / 1.07).toFixed(2);
         combinedResponse.returnvat = (returnTotalText - (returnTotalText / 1.07)).toFixed(2);
 
-        combinedResponse.change = (saleTotalText + returnTotalText).toFixed(2);
-        combinedResponse.changeText = parseFloat((saleTotalText + returnTotalText).toFixed(2));
+        combinedResponse.change = (saleTotalText - returnTotalText).toFixed(2);
+        combinedResponse.changeText = parseFloat((saleTotalText - returnTotalText).toFixed(2));
 
         res.json(combinedResponse);
     } catch (error) {
