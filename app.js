@@ -458,6 +458,8 @@ app.post('/receipt/returnDetail', async (req, res) => {
             WHLO: order.WHLO,
             OBSMCD: order.OBSMCD,
             customer: trimCustomerData(customer),
+            saleno: order.saleItems.length ? order.saleItems[0].CUOR : '',
+            returnno: order.returnItems.length ? order.returnItems[0].CUOR : '',
             saleItems: order.saleItems.map(item => {
                 const unit = unitMap[item.OBSPUN] || item.OBSPUN;
                 const qtytext = `${Math.abs(item.OBORQA)} ${unit}`;
