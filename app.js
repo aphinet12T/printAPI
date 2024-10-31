@@ -15,7 +15,7 @@ const upload = multer({ dest: 'uploads/' });
 app.use(express.json());
 app.use(cors());
 
-mongoose.connect('mongodb://dev12t:12Trading%40!@192.168.44.58:27017/printreceipt')
+mongoose.connect('mongodb://dev12t:12Trading%40!@192.168.44.64:27017/printreceipt')
     .then(() => console.log('MongoDB connected'))
     .catch(err => console.log(err));
 
@@ -39,8 +39,10 @@ async function fetchData() {
     try {
         const response = await axios.get('https://www.fplusstore.com/BCWEB_SERVICES/JSON_VAN_sendOrder.aspx', {
             params: {
-                DATE_FROM: currentDate,
-                DATE_TO: currentDate
+                // DATE_FROM: currentDate,
+                // DATE_TO: currentDate
+                DATE_FROM: '20241001',
+                DATE_TO: '20241031'
             },
             timeout: 20000
         });
@@ -198,10 +200,10 @@ app.post('/receipt/orders', async (req, res) => {
         const customers = response2.data;
 
         const whloToAreaMap = {
-            "217": "BE811",
-            "218": "BE812",
-            "216": "BE813",
-            "215": "BE814"
+            "211": "BE211",
+            "212": "BE212",
+            "213": "BE213",
+            "214": "BE214"
         };
 
         let combinedResponse = response.map(order => {
@@ -246,7 +248,7 @@ app.post('/receipt/orderDetail', async (req, res) => {
     try {
         const combinedData = await Receipt.find({ CUOR: order }).lean();
 
-        const validWHLO = ["215", "216", "217", "218"];
+        const validWHLO = ["211", "212", "213", "214"];
         const filteredOrders = combinedData.filter(order => validWHLO.includes(order.WHLO.trim()));
 
         const response2 = await axios.post('http://192.168.2.97:8383/M3API/OrderManage/order/getCustomer', {
@@ -377,10 +379,10 @@ app.post('/receipt/returns', async (req, res) => {
         const customers = response2.data;
 
         const whloToAreaMap = {
-            "217": "BE811",
-            "218": "BE812",
-            "216": "BE813",
-            "215": "BE814"
+            "211": "BE211",
+            "212": "BE212",
+            "213": "BE213",
+            "214": "BE214"
         };
 
         let combinedResponse = returns.map(order => {
@@ -413,7 +415,7 @@ app.post('/receipt/returnDetail', async (req, res) => {
             return res.status(404).json({ message: 'Order not found' });
         }
 
-        const validWHLO = ["215", "216", "217", "218"];
+        const validWHLO = ["211", "212", "213", "214"];
         const filteredOrder = validWHLO.includes(order.WHLO.trim()) ? order : null;
 
         if (!filteredOrder) {
